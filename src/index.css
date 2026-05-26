@@ -1,0 +1,15 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'DM Sans', system-ui, sans-serif;
+  --color-refai-teal: #0d9488;
+  --color-refai-teal-dark: #0f766e;
+  --color-refai-surface: #f4f6f8;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background-color: var(--color-refai-surface);
+  -webkit-font-smoothing: antialiased;
+}

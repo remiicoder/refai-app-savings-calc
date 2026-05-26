@@ -1,6 +1,8 @@
 const VIEWS = [
   { id: 'subscriptions', label: 'Subscriptions', icon: '💳' },
   { id: 'bills', label: 'Bill Tracker', icon: '📋' },
+  { id: 'frequency', label: 'Pay Frequency', icon: '🏦' },
+  { id: 'rates', label: 'Rate Compare', icon: '📉' },
 ];
 
 export default function AppNav({ activeView, onNavigate }) {

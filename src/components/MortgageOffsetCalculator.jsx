@@ -1,67 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
 import { formatAud } from '../utils/format';
-
-const DEFAULTS = {
-  loanBalance: 600000,
-  interestRate: 6.2,
-  loanTermYears: 25,
-};
-
-function calculateOffset(monthlyRedirect, loanBalance, annualRate, termYears) {
-  if (monthlyRedirect <= 0 || loanBalance <= 0 || annualRate <= 0 || termYears <= 0) {
-    return {
-      totalInterestSaved: 0,
-      yearsSaved: 0,
-      monthsSaved: 0,
-      offsetBalanceYear1: 0,
-      offsetBalanceYear5: 0,
-    };
-  }
-
-  const monthlyRate = annualRate / 100 / 12;
-  const totalMonths = termYears * 12;
-
-  const repayment =
-    (loanBalance * monthlyRate * Math.pow(1 + monthlyRate, totalMonths)) /
-    (Math.pow(1 + monthlyRate, totalMonths) - 1);
-
-  const totalPaidWithout = repayment * totalMonths;
-  const totalInterestWithout = totalPaidWithout - loanBalance;
-
-  let balance = loanBalance;
-  let offsetBalance = 0;
-  let totalInterestWith = 0;
-  let monthsToPayoff = totalMonths;
-
-  for (let m = 1; m <= totalMonths; m++) {
-    offsetBalance += monthlyRedirect;
-    const effectiveBalance = Math.max(0, balance - offsetBalance);
-    const interestThisMonth = effectiveBalance * monthlyRate;
-    totalInterestWith += interestThisMonth;
-    const principalPaid = repayment - interestThisMonth;
-
-    if (principalPaid <= 0) continue;
-
-    balance -= principalPaid;
-
-    if (balance <= 0) {
-      monthsToPayoff = m;
-      break;
-    }
-  }
-
-  const totalInterestSaved = Math.max(0, totalInterestWithout - totalInterestWith);
-  const timeSavedMonths = Math.max(0, totalMonths - monthsToPayoff);
-
-  return {
-    totalInterestSaved,
-    yearsSaved: Math.floor(timeSavedMonths / 12),
-    monthsSaved: timeSavedMonths % 12,
-    offsetBalanceYear1: monthlyRedirect * 12,
-    offsetBalanceYear5: monthlyRedirect * 60,
-  };
-}
+import { simulateFrequency, monthlyRepayment } from '../utils/mortgage';
 
 function StatCard({ label, value, sublabel, highlight = false }) {
   const animated = useAnimatedNumber(
@@ -103,27 +43,68 @@ function SourceBar({ label, icon, amount, color }) {
   );
 }
 
+const FREQ_LABELS = { monthly: 'Monthly', fortnightly: 'Fortnightly' };
+
 export default function MortgageOffsetCalculator({
   totalMonthlySavings,
   subscriptionSavings,
   billNegotiationSavings,
+  rateSavings = 0,
+  paymentFrequency,
+  loanBalance,
+  setLoanBalance,
+  interestRate,
+  setInterestRate,
+  loanTermYears,
+  setLoanTermYears,
 }) {
-  const [loanBalance, setLoanBalance] = useState(DEFAULTS.loanBalance);
-  const [interestRate, setInterestRate] = useState(DEFAULTS.interestRate);
-  const [loanTermYears, setLoanTermYears] = useState(DEFAULTS.loanTermYears);
   const [expanded, setExpanded] = useState(true);
 
-  const result = useMemo(
-    () => calculateOffset(totalMonthlySavings, loanBalance, interestRate, loanTermYears),
-    [totalMonthlySavings, loanBalance, interestRate, loanTermYears],
+  const monthlyBaseline = useMemo(
+    () =>
+      simulateFrequency({
+        loanBalance,
+        annualRate: interestRate,
+        termYears: loanTermYears,
+        frequency: 'monthly',
+        monthlyOffsetDeposit: 0,
+      }),
+    [loanBalance, interestRate, loanTermYears],
   );
 
+  const withSavingsAndFreq = useMemo(
+    () =>
+      simulateFrequency({
+        loanBalance,
+        annualRate: interestRate,
+        termYears: loanTermYears,
+        frequency: paymentFrequency,
+        monthlyOffsetDeposit: totalMonthlySavings,
+      }),
+    [loanBalance, interestRate, loanTermYears, paymentFrequency, totalMonthlySavings],
+  );
+
+  const totalInterestSaved = Math.max(
+    0,
+    monthlyBaseline.totalInterest - withSavingsAndFreq.totalInterest,
+  );
+  const timeSavedMonths = Math.max(
+    0,
+    monthlyBaseline.monthsToPayoff - withSavingsAndFreq.monthsToPayoff,
+  );
+  const yearsSaved = Math.floor(timeSavedMonths / 12);
+  const monthsSaved = timeSavedMonths % 12;
+
   const timeSavedLabel =
-    result.yearsSaved > 0 || result.monthsSaved > 0
-      ? `${result.yearsSaved > 0 ? `${result.yearsSaved} yr${result.yearsSaved !== 1 ? 's' : ''}` : ''}${result.yearsSaved > 0 && result.monthsSaved > 0 ? ' ' : ''}${result.monthsSaved > 0 ? `${result.monthsSaved} mo` : ''}`
+    yearsSaved > 0 || monthsSaved > 0
+      ? `${yearsSaved > 0 ? `${yearsSaved} yr${yearsSaved !== 1 ? 's' : ''}` : ''}${yearsSaved > 0 && monthsSaved > 0 ? ' ' : ''}${monthsSaved > 0 ? `${monthsSaved} mo` : ''}`
       : '—';
 
+  const offsetBalanceYear1 = totalMonthlySavings * 12;
+  const offsetBalanceYear5 = totalMonthlySavings * 60;
+
   const animatedTotal = useAnimatedNumber(totalMonthlySavings);
+  const isFortnightly = paymentFrequency === 'fortnightly';
 
   return (
     <section className="rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 p-6 text-white shadow-lg">
@@ -223,16 +204,35 @@ export default function MortgageOffsetCalculator({
                 amount={billNegotiationSavings}
                 color="text-emerald-300"
               />
+              {rateSavings > 0 && (
+                <SourceBar
+                  label="Rate refinance saving"
+                  icon="📉"
+                  amount={rateSavings}
+                  color="text-violet-300"
+                />
+              )}
             </div>
+            {isFortnightly && (
+              <div className="mt-3 flex items-center gap-2 border-t border-teal-700/40 pt-3">
+                <span className="text-base">🏦</span>
+                <p className="text-sm text-slate-300">
+                  Fortnightly payments
+                </p>
+                <span className="ml-auto rounded-full bg-violet-500/20 px-2.5 py-0.5 text-xs font-semibold text-violet-300 ring-1 ring-violet-400/30">
+                  Active
+                </span>
+              </div>
+            )}
           </div>
 
-          {totalMonthlySavings > 0 ? (
+          {totalMonthlySavings > 0 || isFortnightly || rateSavings > 0 ? (
             <>
               <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <StatCard
                   label="Total interest saved"
-                  value={result.totalInterestSaved}
-                  sublabel="Over the life of your loan"
+                  value={totalInterestSaved}
+                  sublabel={`vs standard monthly${isFortnightly ? ' (no offset)' : ''}`}
                   highlight
                 />
                 <div className="rounded-xl bg-emerald-600/20 p-4 ring-1 ring-emerald-400/30">
@@ -244,25 +244,28 @@ export default function MortgageOffsetCalculator({
                 </div>
                 <StatCard
                   label="Offset balance (1 yr)"
-                  value={result.offsetBalanceYear1}
+                  value={offsetBalanceYear1}
                   sublabel="Accumulated in 12 months"
                 />
                 <StatCard
                   label="Offset balance (5 yrs)"
-                  value={result.offsetBalanceYear5}
+                  value={offsetBalanceYear5}
                   sublabel="Accumulated in 5 years"
                 />
               </div>
 
               <p className="mt-4 text-xs text-slate-500">
-                Assumes all savings are deposited monthly into an offset account linked to a
-                principal &amp; interest home loan. Does not account for rate changes, fees, or tax.
+                Compared against a standard monthly P&amp;I schedule with no offset.
+                {isFortnightly
+                  ? ' Includes the benefit of fortnightly repayments (26 half-payments = 13 monthly equivalents/yr).'
+                  : ''}{' '}
+                Does not account for rate changes, fees, or tax.
               </p>
             </>
           ) : (
             <div className="mt-6 rounded-xl border border-dashed border-slate-600 px-6 py-8 text-center">
               <p className="text-lg font-semibold text-slate-400">
-                Pause subscriptions or negotiate bills to see the impact
+                Pause subscriptions, negotiate bills, compare rates, or switch to fortnightly
               </p>
               <p className="mt-2 text-sm text-slate-500">
                 Every dollar you redirect into your mortgage offset account reduces

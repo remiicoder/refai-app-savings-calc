@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import AppLayout from './components/AppLayout';
 import MortgageOffsetCalculator from './components/MortgageOffsetCalculator';
 import BillNegotiationPage from './pages/BillNegotiationPage';
+import InterestRatePage from './pages/InterestRatePage';
+import PaymentFrequencyPage from './pages/PaymentFrequencyPage';
 import SubscriptionsPage from './pages/SubscriptionsPage';
 import {
   STATUS,
@@ -10,6 +12,13 @@ import {
 } from './data/initialSubscriptions';
 import { initialBills } from './data/initialBills';
 import { summarizeBills } from './utils/bills';
+import { monthlyRepayment } from './utils/mortgage';
+
+const MORTGAGE_DEFAULTS = {
+  loanBalance: 600000,
+  interestRate: 6.2,
+  loanTermYears: 25,
+};
 
 function loadLifetimeSavings() {
   try {
@@ -29,6 +38,14 @@ const VIEW_META = {
     title: 'Bill Negotiation Tracker',
     subtitle: 'Track household bill savings · AUD',
   },
+  frequency: {
+    title: 'Payment Frequency',
+    subtitle: 'Monthly vs Fortnightly · AUD',
+  },
+  rates: {
+    title: 'Rate Comparison',
+    subtitle: 'See how a lower rate saves you · AUD',
+  },
 };
 
 export default function App() {
@@ -38,6 +55,15 @@ export default function App() {
   const [subscriptions, setSubscriptions] = useState(initialSubscriptions);
   const [lifetimeSavings, setLifetimeSavings] = useState(loadLifetimeSavings);
   const [bills, setBills] = useState(initialBills);
+
+  const [loanBalance, setLoanBalance] = useState(MORTGAGE_DEFAULTS.loanBalance);
+  const [interestRate, setInterestRate] = useState(MORTGAGE_DEFAULTS.interestRate);
+  const [loanTermYears, setLoanTermYears] = useState(MORTGAGE_DEFAULTS.loanTermYears);
+  const [paymentFrequency, setPaymentFrequency] = useState('monthly');
+  const [comparisonRate, setComparisonRate] = useState(
+    MORTGAGE_DEFAULTS.interestRate - 0.5,
+  );
+  const [rateSavingsApplied, setRateSavingsApplied] = useState(false);
 
   useEffect(() => {
     localStorage.setItem(LIFETIME_SAVINGS_KEY, String(lifetimeSavings));
@@ -53,8 +79,24 @@ export default function App() {
 
   const billSummary = useMemo(() => summarizeBills(bills), [bills]);
 
+  const rateMonthlySavings = useMemo(() => {
+    if (!rateSavingsApplied || comparisonRate >= interestRate) return 0;
+    const current = monthlyRepayment(loanBalance, interestRate, loanTermYears);
+    const lower = monthlyRepayment(loanBalance, comparisonRate, loanTermYears);
+    return Math.max(0, current - lower);
+  }, [rateSavingsApplied, comparisonRate, interestRate, loanBalance, loanTermYears]);
+
   const combinedMonthlySavings =
-    subscriptionMonthlySavings + billSummary.totalMonthlySaving;
+    subscriptionMonthlySavings + billSummary.totalMonthlySaving + rateMonthlySavings;
+
+  const mortgageProps = {
+    loanBalance,
+    setLoanBalance,
+    interestRate,
+    setInterestRate,
+    loanTermYears,
+    setLoanTermYears,
+  };
 
   return (
     <AppLayout
@@ -67,10 +109,13 @@ export default function App() {
         totalMonthlySavings={combinedMonthlySavings}
         subscriptionSavings={subscriptionMonthlySavings}
         billNegotiationSavings={billSummary.totalMonthlySaving}
+        rateSavings={rateMonthlySavings}
+        paymentFrequency={paymentFrequency}
+        {...mortgageProps}
       />
 
       <div className="mt-6">
-        {view === 'subscriptions' ? (
+        {view === 'subscriptions' && (
           <SubscriptionsPage
             subscriptions={subscriptions}
             setSubscriptions={setSubscriptions}
@@ -78,10 +123,31 @@ export default function App() {
             setLifetimeSavings={setLifetimeSavings}
             subscriptionMonthlySavings={subscriptionMonthlySavings}
           />
-        ) : (
-          <BillNegotiationPage
-            bills={bills}
-            setBills={setBills}
+        )}
+        {view === 'bills' && (
+          <BillNegotiationPage bills={bills} setBills={setBills} />
+        )}
+        {view === 'frequency' && (
+          <PaymentFrequencyPage
+            loanBalance={loanBalance}
+            interestRate={interestRate}
+            loanTermYears={loanTermYears}
+            combinedMonthlySavings={combinedMonthlySavings}
+            paymentFrequency={paymentFrequency}
+            setPaymentFrequency={setPaymentFrequency}
+          />
+        )}
+        {view === 'rates' && (
+          <InterestRatePage
+            loanBalance={loanBalance}
+            interestRate={interestRate}
+            loanTermYears={loanTermYears}
+            paymentFrequency={paymentFrequency}
+            combinedMonthlySavings={combinedMonthlySavings}
+            comparisonRate={comparisonRate}
+            setComparisonRate={setComparisonRate}
+            rateSavingsApplied={rateSavingsApplied}
+            setRateSavingsApplied={setRateSavingsApplied}
           />
         )}
       </div>

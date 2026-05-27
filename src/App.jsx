@@ -3,8 +3,10 @@ import AppLayout from './components/AppLayout';
 import MortgageOffsetCalculator from './components/MortgageOffsetCalculator';
 import BillNegotiationPage from './pages/BillNegotiationPage';
 import InterestRatePage from './pages/InterestRatePage';
+import LumpSumOffsetPage from './pages/LumpSumOffsetPage';
 import PaymentFrequencyPage from './pages/PaymentFrequencyPage';
 import SubscriptionsPage from './pages/SubscriptionsPage';
+import { initialLumpSums } from './data/initialLumpSums';
 import {
   STATUS,
   initialSubscriptions,
@@ -46,6 +48,10 @@ const VIEW_META = {
     title: 'Rate Comparison',
     subtitle: 'See how a lower rate saves you · AUD',
   },
+  lumpsums: {
+    title: 'Tax & Savings Deposits',
+    subtitle: 'Lump sums into your offset account · AUD',
+  },
 };
 
 export default function App() {
@@ -64,6 +70,7 @@ export default function App() {
     MORTGAGE_DEFAULTS.interestRate - 0.5,
   );
   const [rateSavingsApplied, setRateSavingsApplied] = useState(false);
+  const [lumpSums, setLumpSums] = useState(initialLumpSums);
 
   useEffect(() => {
     localStorage.setItem(LIFETIME_SAVINGS_KEY, String(lifetimeSavings));
@@ -148,6 +155,16 @@ export default function App() {
             setComparisonRate={setComparisonRate}
             rateSavingsApplied={rateSavingsApplied}
             setRateSavingsApplied={setRateSavingsApplied}
+          />
+        )}
+        {view === 'lumpsums' && (
+          <LumpSumOffsetPage
+            loanBalance={loanBalance}
+            interestRate={interestRate}
+            loanTermYears={loanTermYears}
+            combinedMonthlySavings={combinedMonthlySavings}
+            lumpSums={lumpSums}
+            setLumpSums={setLumpSums}
           />
         )}
       </div>

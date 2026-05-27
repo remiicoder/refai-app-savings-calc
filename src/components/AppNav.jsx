@@ -3,12 +3,13 @@ const VIEWS = [
   { id: 'bills', label: 'Bill Tracker', icon: '📋' },
   { id: 'frequency', label: 'Pay Frequency', icon: '🏦' },
   { id: 'rates', label: 'Rate Compare', icon: '📉' },
+  { id: 'lumpsums', label: 'Lump Sums', icon: '💵' },
 ];
 
 export default function AppNav({ activeView, onNavigate }) {
   return (
     <nav
-      className="flex gap-2 rounded-xl bg-slate-100 p-1"
+      className="flex flex-wrap gap-2 rounded-xl bg-slate-100 p-1"
       aria-label="Main navigation"
     >
       {VIEWS.map((view) => {

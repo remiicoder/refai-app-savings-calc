@@ -156,3 +156,90 @@ export function simulateFrequency({
     paymentsPerYear: periodsPerYear,
   };
 }
+
+/**
+ * Builds month-index → deposit amount for lump sums (1-based month from loan start).
+ */
+export function buildLumpSumSchedule(lumpSums, maxMonths) {
+  const schedule = new Map();
+  for (const lump of lumpSums) {
+    if (!lump?.amount || lump.amount <= 0) continue;
+    const month = Math.min(12, Math.max(1, lump.month || 1));
+    const years = lump.recurring ? Math.ceil(maxMonths / 12) : 1;
+    for (let year = 0; year < years; year++) {
+      const monthIndex = year * 12 + month;
+      if (monthIndex > maxMonths) break;
+      schedule.set(monthIndex, (schedule.get(monthIndex) || 0) + lump.amount);
+    }
+  }
+  return schedule;
+}
+
+/**
+ * Monthly P&I simulation with offset deposits and optional yearly / one-off lump sums.
+ */
+export function simulateOffsetWithLumpSums({
+  loanBalance,
+  annualRate,
+  termYears,
+  monthlyOffsetDeposit = 0,
+  lumpSums = [],
+}) {
+  if (loanBalance <= 0 || annualRate <= 0 || termYears <= 0) {
+    return {
+      totalInterest: 0,
+      monthsToPayoff: 0,
+      offsetBalanceYear1: 0,
+      offsetBalanceYear5: 0,
+      totalLumpSumsDeposited: 0,
+      offsetAtMonths: {},
+    };
+  }
+
+  const monthlyR = annualRate / 100 / 12;
+  const totalMonths = termYears * 12;
+  const repayment = monthlyRepayment(loanBalance, annualRate, termYears);
+  const maxMonths = totalMonths + 120;
+  const lumpSchedule = buildLumpSumSchedule(lumpSums, maxMonths);
+
+  let balance = loanBalance;
+  let offsetBalance = 0;
+  let totalInterest = 0;
+  let months = 0;
+  let totalLumpSumsDeposited = 0;
+  const offsetAtMonths = {};
+
+  for (let m = 1; m <= maxMonths; m++) {
+    if (balance <= 0) break;
+
+    offsetBalance += monthlyOffsetDeposit;
+    const lumpThisMonth = lumpSchedule.get(m) || 0;
+    if (lumpThisMonth > 0) {
+      offsetBalance += lumpThisMonth;
+      totalLumpSumsDeposited += lumpThisMonth;
+    }
+
+    const effective = Math.max(0, balance - offsetBalance);
+    const interest = effective * monthlyR;
+    totalInterest += interest;
+    const principal = repayment - interest;
+    balance -= Math.max(0, principal);
+    months = m;
+
+    if (m === 12) offsetAtMonths.year1 = offsetBalance;
+    if (m === 60) offsetAtMonths.year5 = offsetBalance;
+    if (m === 120) offsetAtMonths.year10 = offsetBalance;
+
+    if (balance <= 0) break;
+  }
+
+  return {
+    totalInterest,
+    monthsToPayoff: months,
+    offsetBalanceYear1: offsetAtMonths.year1 ?? offsetBalance,
+    offsetBalanceYear5: offsetAtMonths.year5 ?? offsetBalance,
+    offsetBalanceYear10: offsetAtMonths.year10 ?? offsetBalance,
+    totalLumpSumsDeposited,
+    offsetAtMonths,
+  };
+}

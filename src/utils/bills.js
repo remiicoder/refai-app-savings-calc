@@ -5,6 +5,7 @@ export function monthlySaving(bill) {
 }
 
 export function monthsSinceNegotiation(isoDate) {
+  if (!isoDate) return null;
   const then = new Date(isoDate);
   const now = new Date();
   let months =
@@ -15,6 +16,7 @@ export function monthsSinceNegotiation(isoDate) {
 }
 
 export function getRenegotiationStatus(isoDate) {
+  if (!isoDate) return RENEGOTIATION_STATUS.OVERDUE;
   const months = monthsSinceNegotiation(isoDate);
   if (months >= 12) return RENEGOTIATION_STATUS.OVERDUE;
   if (months >= 6) return RENEGOTIATION_STATUS.DUE_SOON;
@@ -22,6 +24,7 @@ export function getRenegotiationStatus(isoDate) {
 }
 
 export function renegotiationLabel(status, months) {
+  if (months === null) return 'Not yet negotiated — time to call!';
   if (status === RENEGOTIATION_STATUS.OVERDUE) {
     return `Last negotiated ${months} months ago — time to call!`;
   }
@@ -77,4 +80,26 @@ export function summarizeBills(bills) {
     totalMonthlySaving,
     totalAnnualSaving: totalMonthlySaving * 12,
   };
+}
+
+export function projectedSavingAtPercent(bills, percent) {
+  if (percent <= 0) return 0;
+  const rate = percent / 100;
+  return bills.reduce((sum, bill) => sum + bill.originalPrice * rate, 0);
+}
+
+export function applyTargetSavingsPercent(bills, percent) {
+  const clamped = Math.min(100, Math.max(0, percent));
+  const factor = 1 - clamped / 100;
+  return bills.map((bill) => ({
+    ...bill,
+    negotiatedPrice: Math.round(bill.originalPrice * factor * 100) / 100,
+  }));
+}
+
+export function resetBillsToOriginalPrices(bills) {
+  return bills.map((bill) => ({
+    ...bill,
+    negotiatedPrice: bill.originalPrice,
+  }));
 }

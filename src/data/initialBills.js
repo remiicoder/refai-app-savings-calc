@@ -4,7 +4,6 @@ export const BILL_CATEGORIES = {
   insurance: { label: 'Insurance', icon: '🛡️', color: '#6366F1' },
   mobile: { label: 'Mobile', icon: '📱', color: '#EC4899' },
   health: { label: 'Health', icon: '❤️', color: '#EF4444' },
-  'home-loan': { label: 'Home loan', icon: '🏠', color: '#0D9488' },
   gym: { label: 'Gym', icon: '💪', color: '#8B5CF6' },
   other: { label: 'Other', icon: '📋', color: '#64748B' },
 };
@@ -71,14 +70,6 @@ export const initialBills = [
     lastNegotiated: monthsAgoDate(18),
   },
   {
-    id: 'cba-home-loan',
-    name: 'Home Loan (CBA)',
-    category: 'home-loan',
-    originalPrice: 2800,
-    negotiatedPrice: 2650,
-    lastNegotiated: monthsAgoDate(2),
-  },
-  {
     id: 'gym',
     name: 'Gym Membership',
     category: 'gym',
@@ -87,3 +78,13 @@ export const initialBills = [
     lastNegotiated: monthsAgoDate(5),
   },
 ];
+
+/** Bills with no negotiated savings — used on reset / fresh scenarios. */
+export function getFreshBills() {
+  return initialBills.map(({ originalPrice, ...bill }) => ({
+    ...bill,
+    originalPrice,
+    negotiatedPrice: originalPrice,
+    lastNegotiated: null,
+  }));
+}

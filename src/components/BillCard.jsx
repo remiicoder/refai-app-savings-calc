@@ -70,7 +70,8 @@ export default function BillCard({ bill, onEdit, onCallNudge }) {
       >
         {renegotiationLabel(status, months)}
         <span className="block text-xs font-normal text-slate-500">
-          Last call: {formatBillingDate(bill.lastNegotiated)}
+          Last call:{' '}
+          {bill.lastNegotiated ? formatBillingDate(bill.lastNegotiated) : 'Never'}
         </span>
       </p>
 

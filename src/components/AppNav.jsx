@@ -1,6 +1,7 @@
 const VIEWS = [
   { id: 'subscriptions', label: 'Subscriptions', icon: '💳' },
   { id: 'bills', label: 'Bill Tracker', icon: '📋' },
+  { id: 'wages', label: 'Wages', icon: '💰' },
   { id: 'frequency', label: 'Pay Frequency', icon: '🏦' },
   { id: 'rates', label: 'Rate Compare', icon: '📉' },
   { id: 'lumpsums', label: 'Lump Sums', icon: '💵' },

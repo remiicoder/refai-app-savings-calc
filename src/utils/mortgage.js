@@ -243,3 +243,85 @@ export function simulateOffsetWithLumpSums({
     offsetAtMonths,
   };
 }
+
+const DAYS_PER_MONTH = 30;
+
+/**
+ * Simulates salary crediting / wage flushing: weekly net pay is deposited into
+ * the offset account, stays there until month-end when it is withdrawn, then
+ * the cycle repeats. Optional permanent monthly offset deposits accumulate and
+ * are never withdrawn.
+ */
+export function simulateWageFlush({
+  loanBalance,
+  annualRate,
+  termYears,
+  weeklyWage = 0,
+  monthlyOffsetDeposit = 0,
+}) {
+  if (loanBalance <= 0 || annualRate <= 0 || termYears <= 0) {
+    return {
+      totalInterest: 0,
+      monthsToPayoff: 0,
+      peakWageOffset: 0,
+      avgWageOffsetInMonth: 0,
+      monthlyWageDeposited: 0,
+    };
+  }
+
+  const dailyRate = annualRate / 100 / 365;
+  const totalMonths = termYears * 12;
+  const repayment = monthlyRepayment(loanBalance, annualRate, termYears);
+  const maxMonths = totalMonths + 120;
+
+  let balance = loanBalance;
+  let permanentOffset = 0;
+  let wageOffset = 0;
+  let totalInterest = 0;
+  let months = 0;
+  let peakWageOffset = 0;
+  let wageOffsetDaySum = 0;
+  let wageOffsetDays = 0;
+  let monthlyWageDeposited = 0;
+
+  for (let m = 1; m <= maxMonths; m++) {
+    if (balance <= 0) break;
+
+    permanentOffset += monthlyOffsetDeposit;
+    let monthInterest = 0;
+    let monthWageDeposited = 0;
+
+    for (let d = 1; d <= DAYS_PER_MONTH; d++) {
+      const globalDay = (m - 1) * DAYS_PER_MONTH + d;
+      if (weeklyWage > 0 && globalDay % 7 === 0) {
+        wageOffset += weeklyWage;
+        monthWageDeposited += weeklyWage;
+      }
+
+      peakWageOffset = Math.max(peakWageOffset, wageOffset);
+      wageOffsetDaySum += wageOffset;
+      wageOffsetDays += 1;
+
+      const effective = Math.max(0, balance - permanentOffset - wageOffset);
+      monthInterest += effective * dailyRate;
+    }
+
+    monthlyWageDeposited = monthWageDeposited;
+    wageOffset = 0;
+
+    totalInterest += monthInterest;
+    const principal = repayment - monthInterest;
+    balance -= Math.max(0, principal);
+    months = m;
+
+    if (balance <= 0) break;
+  }
+
+  return {
+    totalInterest,
+    monthsToPayoff: months,
+    peakWageOffset,
+    avgWageOffsetInMonth: wageOffsetDays > 0 ? wageOffsetDaySum / wageOffsetDays : 0,
+    monthlyWageDeposited,
+  };
+}

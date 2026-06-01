@@ -6,21 +6,28 @@ import InterestRatePage from './pages/InterestRatePage';
 import LumpSumOffsetPage from './pages/LumpSumOffsetPage';
 import PaymentFrequencyPage from './pages/PaymentFrequencyPage';
 import SubscriptionsPage from './pages/SubscriptionsPage';
-import { initialLumpSums } from './data/initialLumpSums';
+import WagesPage from './pages/WagesPage';
 import {
   STATUS,
   initialSubscriptions,
   LIFETIME_SAVINGS_KEY,
 } from './data/initialSubscriptions';
-import { initialBills } from './data/initialBills';
+import { getFreshBills } from './data/initialBills';
 import { summarizeBills } from './utils/bills';
 import { monthlyRepayment } from './utils/mortgage';
 
 const MORTGAGE_DEFAULTS = {
-  loanBalance: 600000,
-  interestRate: 6.2,
-  loanTermYears: 25,
+  loanBalance: 800000,
+  interestRate: 6.5,
+  loanTermYears: 30,
 };
+
+function createDefaultSubscriptions() {
+  return structuredClone(initialSubscriptions).map((s) => ({
+    ...s,
+    status: STATUS.ACTIVE,
+  }));
+}
 
 function loadLifetimeSavings() {
   try {
@@ -40,6 +47,10 @@ const VIEW_META = {
     title: 'Bill Negotiation Tracker',
     subtitle: 'Track household bill savings · AUD',
   },
+  wages: {
+    title: 'Wage Offset Flushing',
+    subtitle: 'Salary crediting through your offset · AUD',
+  },
   frequency: {
     title: 'Payment Frequency',
     subtitle: 'Monthly vs Fortnightly · AUD',
@@ -56,11 +67,13 @@ const VIEW_META = {
 
 export default function App() {
   const [view, setView] = useState('subscriptions');
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+  const [scenarioKey, setScenarioKey] = useState(0);
   const meta = VIEW_META[view];
 
-  const [subscriptions, setSubscriptions] = useState(initialSubscriptions);
+  const [subscriptions, setSubscriptions] = useState(createDefaultSubscriptions);
   const [lifetimeSavings, setLifetimeSavings] = useState(loadLifetimeSavings);
-  const [bills, setBills] = useState(initialBills);
+  const [bills, setBills] = useState(() => structuredClone(getFreshBills()));
 
   const [loanBalance, setLoanBalance] = useState(MORTGAGE_DEFAULTS.loanBalance);
   const [interestRate, setInterestRate] = useState(MORTGAGE_DEFAULTS.interestRate);
@@ -70,11 +83,32 @@ export default function App() {
     MORTGAGE_DEFAULTS.interestRate - 0.5,
   );
   const [rateSavingsApplied, setRateSavingsApplied] = useState(false);
-  const [lumpSums, setLumpSums] = useState(initialLumpSums);
+  const [lumpSums, setLumpSums] = useState([]);
+  const [weeklyWage, setWeeklyWage] = useState(0);
+  const [wageFlushEnabled, setWageFlushEnabled] = useState(false);
 
   useEffect(() => {
     localStorage.setItem(LIFETIME_SAVINGS_KEY, String(lifetimeSavings));
   }, [lifetimeSavings]);
+
+  function resetAllSavings() {
+    setSubscriptions(createDefaultSubscriptions());
+    setLifetimeSavings(0);
+    localStorage.setItem(LIFETIME_SAVINGS_KEY, '0');
+    setBills(structuredClone(getFreshBills()));
+    setLoanBalance(MORTGAGE_DEFAULTS.loanBalance);
+    setInterestRate(MORTGAGE_DEFAULTS.interestRate);
+    setLoanTermYears(MORTGAGE_DEFAULTS.loanTermYears);
+    setPaymentFrequency('monthly');
+    setComparisonRate(MORTGAGE_DEFAULTS.interestRate - 0.5);
+    setRateSavingsApplied(false);
+    setLumpSums([]);
+    setWeeklyWage(0);
+    setWageFlushEnabled(false);
+    setScenarioKey((k) => k + 1);
+    setView('subscriptions');
+    setResetConfirmOpen(false);
+  }
 
   const subscriptionMonthlySavings = useMemo(
     () =>
@@ -111,6 +145,7 @@ export default function App() {
       onNavigate={setView}
       title={meta.title}
       subtitle={meta.subtitle}
+      onResetClick={() => setResetConfirmOpen(true)}
     >
       <MortgageOffsetCalculator
         totalMonthlySavings={combinedMonthlySavings}
@@ -118,10 +153,13 @@ export default function App() {
         billNegotiationSavings={billSummary.totalMonthlySaving}
         rateSavings={rateMonthlySavings}
         paymentFrequency={paymentFrequency}
+        weeklyWage={weeklyWage}
+        wageFlushEnabled={wageFlushEnabled}
+        lumpSums={lumpSums}
         {...mortgageProps}
       />
 
-      <div className="mt-6">
+      <div className="mt-6" key={scenarioKey}>
         {view === 'subscriptions' && (
           <SubscriptionsPage
             subscriptions={subscriptions}
@@ -133,6 +171,18 @@ export default function App() {
         )}
         {view === 'bills' && (
           <BillNegotiationPage bills={bills} setBills={setBills} />
+        )}
+        {view === 'wages' && (
+          <WagesPage
+            loanBalance={loanBalance}
+            interestRate={interestRate}
+            loanTermYears={loanTermYears}
+            combinedMonthlySavings={combinedMonthlySavings}
+            weeklyWage={weeklyWage}
+            setWeeklyWage={setWeeklyWage}
+            wageFlushEnabled={wageFlushEnabled}
+            setWageFlushEnabled={setWageFlushEnabled}
+          />
         )}
         {view === 'frequency' && (
           <PaymentFrequencyPage
@@ -168,6 +218,47 @@ export default function App() {
           />
         )}
       </div>
+
+      {resetConfirmOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reset-modal-title"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+            onClick={() => setResetConfirmOpen(false)}
+            aria-label="Close modal"
+          />
+          <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <h2 id="reset-modal-title" className="text-lg font-semibold text-slate-900">
+              Start a new scenario?
+            </h2>
+            <p className="mt-3 text-sm text-slate-600">
+              This clears all savings, reactivates subscriptions, resets bills and lump sums,
+              and restores mortgage settings. Interest saved will return to $0.
+            </p>
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setResetConfirmOpen(false)}
+                className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={resetAllSavings}
+                className="rounded-xl bg-refai-teal px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-refai-teal-dark"
+              >
+                Reset all savings
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppLayout>
   );
 }

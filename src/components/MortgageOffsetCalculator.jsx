@@ -1,7 +1,11 @@
 import { useMemo, useState } from 'react';
 import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
 import { formatAud } from '../utils/format';
-import { simulateFrequency, monthlyRepayment } from '../utils/mortgage';
+import {
+  simulateFrequency,
+  simulateOffsetWithLumpSums,
+  simulateWageFlush,
+} from '../utils/mortgage';
 
 function StatCard({ label, value, sublabel, highlight = false }) {
   const animated = useAnimatedNumber(
@@ -51,6 +55,9 @@ export default function MortgageOffsetCalculator({
   billNegotiationSavings,
   rateSavings = 0,
   paymentFrequency,
+  weeklyWage = 0,
+  wageFlushEnabled = false,
+  lumpSums = [],
   loanBalance,
   setLoanBalance,
   interestRate,
@@ -84,14 +91,79 @@ export default function MortgageOffsetCalculator({
     [loanBalance, interestRate, loanTermYears, paymentFrequency, totalMonthlySavings],
   );
 
-  const totalInterestSaved = Math.max(
+  const wageFlushOnly = useMemo(() => {
+    if (!wageFlushEnabled || weeklyWage <= 0) {
+      return { totalInterestSaved: 0, timeSavedMonths: 0 };
+    }
+    const withoutWages = simulateWageFlush({
+      loanBalance,
+      annualRate: interestRate,
+      termYears: loanTermYears,
+      weeklyWage: 0,
+      monthlyOffsetDeposit: totalMonthlySavings,
+    });
+    const withWages = simulateWageFlush({
+      loanBalance,
+      annualRate: interestRate,
+      termYears: loanTermYears,
+      weeklyWage,
+      monthlyOffsetDeposit: totalMonthlySavings,
+    });
+    return {
+      totalInterestSaved: Math.max(0, withoutWages.totalInterest - withWages.totalInterest),
+      timeSavedMonths: Math.max(0, withoutWages.monthsToPayoff - withWages.monthsToPayoff),
+    };
+  }, [
+    loanBalance,
+    interestRate,
+    loanTermYears,
+    totalMonthlySavings,
+    weeklyWage,
+    wageFlushEnabled,
+  ]);
+
+  const hasLumpSums = lumpSums.some((l) => l?.amount > 0);
+
+  const lumpSumImpact = useMemo(() => {
+    if (!hasLumpSums) {
+      return {
+        totalInterestSaved: 0,
+        timeSavedMonths: 0,
+        offsetBalanceYear1: null,
+        offsetBalanceYear5: null,
+        totalDeposited: 0,
+      };
+    }
+    const baseParams = {
+      loanBalance,
+      annualRate: interestRate,
+      termYears: loanTermYears,
+      monthlyOffsetDeposit: totalMonthlySavings,
+    };
+    const withoutLumps = simulateOffsetWithLumpSums({ ...baseParams, lumpSums: [] });
+    const withLumps = simulateOffsetWithLumpSums({ ...baseParams, lumpSums });
+    return {
+      totalInterestSaved: Math.max(0, withoutLumps.totalInterest - withLumps.totalInterest),
+      timeSavedMonths: Math.max(0, withoutLumps.monthsToPayoff - withLumps.monthsToPayoff),
+      offsetBalanceYear1: withLumps.offsetBalanceYear1,
+      offsetBalanceYear5: withLumps.offsetBalanceYear5,
+      totalDeposited: withLumps.totalLumpSumsDeposited,
+    };
+  }, [loanBalance, interestRate, loanTermYears, totalMonthlySavings, lumpSums, hasLumpSums]);
+
+  const freqInterestSaved = Math.max(
     0,
     monthlyBaseline.totalInterest - withSavingsAndFreq.totalInterest,
   );
-  const timeSavedMonths = Math.max(
+  const freqTimeSavedMonths = Math.max(
     0,
     monthlyBaseline.monthsToPayoff - withSavingsAndFreq.monthsToPayoff,
   );
+
+  const totalInterestSaved =
+    freqInterestSaved + wageFlushOnly.totalInterestSaved + lumpSumImpact.totalInterestSaved;
+  const timeSavedMonths =
+    freqTimeSavedMonths + wageFlushOnly.timeSavedMonths + lumpSumImpact.timeSavedMonths;
   const yearsSaved = Math.floor(timeSavedMonths / 12);
   const monthsSaved = timeSavedMonths % 12;
 
@@ -100,11 +172,23 @@ export default function MortgageOffsetCalculator({
       ? `${yearsSaved > 0 ? `${yearsSaved} yr${yearsSaved !== 1 ? 's' : ''}` : ''}${yearsSaved > 0 && monthsSaved > 0 ? ' ' : ''}${monthsSaved > 0 ? `${monthsSaved} mo` : ''}`
       : '—';
 
-  const offsetBalanceYear1 = totalMonthlySavings * 12;
-  const offsetBalanceYear5 = totalMonthlySavings * 60;
+  const offsetBalanceYear1 =
+    lumpSumImpact.offsetBalanceYear1 ?? totalMonthlySavings * 12;
+  const offsetBalanceYear5 =
+    lumpSumImpact.offsetBalanceYear5 ?? totalMonthlySavings * 60;
 
   const animatedTotal = useAnimatedNumber(totalMonthlySavings);
+  const baselineInterest = monthlyBaseline.totalInterest;
+  const netInterestPayable = Math.max(0, baselineInterest - totalInterestSaved);
+  const animatedNetInterest = useAnimatedNumber(netInterestPayable, 700);
   const isFortnightly = paymentFrequency === 'fortnightly';
+  const hasWageFlush = wageFlushEnabled && weeklyWage > 0;
+  const showResults =
+    totalMonthlySavings > 0 ||
+    isFortnightly ||
+    rateSavings > 0 ||
+    hasWageFlush ||
+    hasLumpSums;
 
   return (
     <section className="rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 p-6 text-white shadow-lg">
@@ -118,7 +202,7 @@ export default function MortgageOffsetCalculator({
             Mortgage offset calculator
           </h2>
           <p className="mt-1 text-sm text-slate-400">
-            Combined savings from subscriptions &amp; bill negotiations
+            Combined savings from subscriptions, bills, lump sums &amp; more
           </p>
         </div>
         <span
@@ -177,6 +261,40 @@ export default function MortgageOffsetCalculator({
             </label>
           </div>
 
+          {loanBalance > 0 && interestRate > 0 && loanTermYears > 0 && (
+            <div className="mt-5 rounded-lg bg-slate-700/50 px-4 py-4 ring-1 ring-slate-600">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <p className="text-sm font-medium text-slate-300">
+                    Total interest payable
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {totalInterestSaved > 0 ? (
+                      <>
+                        <span className="line-through decoration-slate-500">
+                          {formatAud(baselineInterest)}
+                        </span>
+                        {' · '}
+                        <span className="text-emerald-400">
+                          {formatAud(totalInterestSaved)} saved
+                        </span>
+                      </>
+                    ) : (
+                      <>Standard monthly P&amp;I over {loanTermYears} years, no offset</>
+                    )}
+                  </p>
+                </div>
+                <p
+                  className={`text-3xl font-bold tabular-nums tracking-tight ${
+                    totalInterestSaved > 0 ? 'text-emerald-300' : 'text-white'
+                  }`}
+                >
+                  {formatAud(animatedNetInterest)}
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Savings breakdown by source */}
           <div className="mt-5 rounded-lg bg-teal-900/40 px-4 py-4 ring-1 ring-teal-500/20">
             <div className="flex items-center justify-between">
@@ -212,6 +330,41 @@ export default function MortgageOffsetCalculator({
                   color="text-violet-300"
                 />
               )}
+              {hasWageFlush && (
+                <div className="flex items-center gap-3">
+                  <span className="text-base">💰</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm text-slate-300">Wage flush</p>
+                      <p className="text-sm font-semibold tabular-nums text-sky-300">
+                        {formatAud(weeklyWage)}/wk
+                      </p>
+                    </div>
+                    <p className="mt-0.5 text-xs text-slate-400">
+                      Saves {formatAud(wageFlushOnly.totalInterestSaved)} interest over loan
+                    </p>
+                  </div>
+                </div>
+              )}
+              {hasLumpSums && (
+                <div className="flex items-center gap-3">
+                  <span className="text-base">💵</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm text-slate-300">Lump sum deposits</p>
+                      <p className="text-sm font-semibold tabular-nums text-amber-300">
+                        {lumpSums.filter((l) => l.amount > 0).length} scheduled
+                      </p>
+                    </div>
+                    <p className="mt-0.5 text-xs text-slate-400">
+                      Saves {formatAud(lumpSumImpact.totalInterestSaved)} interest over loan
+                      {lumpSumImpact.totalDeposited > 0 && (
+                        <> · {formatAud(lumpSumImpact.totalDeposited)} total deposited</>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
             {isFortnightly && (
               <div className="mt-3 flex items-center gap-2 border-t border-teal-700/40 pt-3">
@@ -226,7 +379,7 @@ export default function MortgageOffsetCalculator({
             )}
           </div>
 
-          {totalMonthlySavings > 0 || isFortnightly || rateSavings > 0 ? (
+          {showResults ? (
             <>
               <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <StatCard
@@ -258,6 +411,12 @@ export default function MortgageOffsetCalculator({
                 Compared against a standard monthly P&amp;I schedule with no offset.
                 {isFortnightly
                   ? ' Includes the benefit of fortnightly repayments (26 half-payments = 13 monthly equivalents/yr).'
+                  : ''}
+                {hasWageFlush
+                  ? ' Wage flush models weekly pay deposited into offset and withdrawn at month-end.'
+                  : ''}
+                {hasLumpSums
+                  ? ' Lump sums follow your deposit schedule on top of monthly offset savings.'
                   : ''}{' '}
                 Does not account for rate changes, fees, or tax.
               </p>
@@ -265,7 +424,7 @@ export default function MortgageOffsetCalculator({
           ) : (
             <div className="mt-6 rounded-xl border border-dashed border-slate-600 px-6 py-8 text-center">
               <p className="text-lg font-semibold text-slate-400">
-                Pause subscriptions, negotiate bills, compare rates, or switch to fortnightly
+                Pause subscriptions, negotiate bills, add lump sums, flush wages, compare rates, or switch to fortnightly
               </p>
               <p className="mt-2 text-sm text-slate-500">
                 Every dollar you redirect into your mortgage offset account reduces

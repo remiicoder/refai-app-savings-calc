@@ -13,16 +13,13 @@ export default function AppLayout({
       <header className="border-b border-slate-200/80 bg-white">
         <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-refai-teal text-white">
-                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden>
-                  <path d="M12 3L2 12h3v8h6v-6h2v6h6v-8h3L12 3z" />
-                </svg>
-              </div>
+            <div className="flex items-center gap-4">
+              <img
+                src="/refai-logo.png"
+                alt="refai.app"
+                className="h-9 w-auto sm:h-10"
+              />
               <div>
-                <p className="text-xs font-medium uppercase tracking-wider text-refai-teal">
-                  Refai
-                </p>
                 <h1 className="text-lg font-bold text-slate-900 sm:text-xl">{title}</h1>
               </div>
             </div>

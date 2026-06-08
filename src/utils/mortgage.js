@@ -244,6 +244,153 @@ export function simulateOffsetWithLumpSums({
   };
 }
 
+/**
+ * Simulates monthly P&I repayments with optional lump sums at each year-end.
+ * yearEndLumpSums: array where index 0 = lump after year 1, etc.
+ */
+export function simulateHomeLoanWithYearlyLumps({
+  loanBalance,
+  annualRate,
+  termYears,
+  yearEndLumpSums = [],
+}) {
+  if (loanBalance <= 0 || annualRate <= 0 || termYears <= 0) {
+    return {
+      monthsToPayoff: 0,
+      totalInterest: 0,
+      yearlySnapshots: [],
+    };
+  }
+
+  const monthlyR = annualRate / 100 / 12;
+  const repayment = monthlyRepayment(loanBalance, annualRate, termYears);
+  const maxMonths = termYears * 12 + 120;
+
+  let balance = loanBalance;
+  let totalInterest = 0;
+  let months = 0;
+  let monthInYear = 0;
+  let year = 1;
+  const yearlySnapshots = [];
+
+  for (let m = 1; m <= maxMonths; m++) {
+    if (balance <= 0) break;
+
+    totalInterest += balance * monthlyR;
+    balance -= Math.max(0, repayment - balance * monthlyR);
+    months = m;
+    monthInYear++;
+
+    if (monthInYear === 12) {
+      const lump = yearEndLumpSums[year - 1] || 0;
+      const applied = Math.min(lump, balance);
+      balance -= applied;
+
+      yearlySnapshots.push({
+        year,
+        lumpApplied: applied,
+        homeLoanBalance: balance,
+      });
+
+      year++;
+      monthInYear = 0;
+      if (balance <= 0) break;
+    }
+  }
+
+  return { monthsToPayoff: months, totalInterest, yearlySnapshots };
+}
+
+/**
+ * Models recycling investment-property equity growth (annual % on current value)
+ * into the home loan at each year-end. Illustrative only — not financial advice.
+ */
+export function simulateEquityRecyclingStrategy({
+  loanBalance,
+  annualRate,
+  termYears,
+  investmentPurchasePrice,
+  annualGrowthPercent = 4,
+}) {
+  if (
+    loanBalance <= 0 ||
+    annualRate <= 0 ||
+    termYears <= 0 ||
+    investmentPurchasePrice <= 0 ||
+    annualGrowthPercent <= 0
+  ) {
+    return {
+      monthsToPayoff: 0,
+      totalInterest: 0,
+      totalEquityApplied: 0,
+      baselineMonths: 0,
+      timeSavedMonths: 0,
+      interestSaved: 0,
+      yearlySchedule: [],
+      finalPropertyValue: investmentPurchasePrice,
+      totalEquityGrowth: 0,
+    };
+  }
+
+  const growthRate = annualGrowthPercent / 100;
+  let propertyValue = investmentPurchasePrice;
+  const yearEndLumpSums = [];
+  const yearlySchedule = [];
+
+  for (let y = 1; y <= 50; y++) {
+    const equityGain = propertyValue * growthRate;
+    propertyValue += equityGain;
+    yearEndLumpSums.push(equityGain);
+    yearlySchedule.push({
+      year: y,
+      propertyValueStart: propertyValue - equityGain,
+      equityGain,
+      propertyValueEnd: propertyValue,
+      equityAvailable: equityGain,
+    });
+    if (yearEndLumpSums.length >= 50) break;
+  }
+
+  const withStrategy = simulateHomeLoanWithYearlyLumps({
+    loanBalance,
+    annualRate,
+    termYears,
+    yearEndLumpSums,
+  });
+
+  const baseline = simulateHomeLoanWithYearlyLumps({
+    loanBalance,
+    annualRate,
+    termYears,
+    yearEndLumpSums: [],
+  });
+
+  const payoffYear = Math.ceil(withStrategy.monthsToPayoff / 12);
+  const schedule = yearlySchedule
+    .slice(0, payoffYear)
+    .map((row, i) => ({
+      ...row,
+      equityApplied: Math.min(
+        row.equityGain,
+        withStrategy.yearlySnapshots[i]?.lumpApplied ?? row.equityGain,
+      ),
+      homeLoanBalance: withStrategy.yearlySnapshots[i]?.homeLoanBalance ?? 0,
+    }));
+
+  return {
+    monthsToPayoff: withStrategy.monthsToPayoff,
+    totalInterest: withStrategy.totalInterest,
+    totalEquityApplied: schedule.reduce((s, r) => s + r.equityApplied, 0),
+    baselineMonths: baseline.monthsToPayoff,
+    baselineInterest: baseline.totalInterest,
+    timeSavedMonths: Math.max(0, baseline.monthsToPayoff - withStrategy.monthsToPayoff),
+    interestSaved: Math.max(0, baseline.totalInterest - withStrategy.totalInterest),
+    yearlySchedule: schedule,
+    finalPropertyValue: yearlySchedule[payoffYear - 1]?.propertyValueEnd ?? propertyValue,
+    totalEquityGrowth: propertyValue - investmentPurchasePrice,
+  };
+}
+
 const DAYS_PER_MONTH = 30;
 
 /**

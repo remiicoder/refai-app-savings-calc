@@ -5,6 +5,7 @@ const VIEWS = [
   { id: 'frequency', label: 'Pay Frequency', icon: '🏦' },
   { id: 'rates', label: 'Rate Compare', icon: '📉' },
   { id: 'lumpsums', label: 'Lump Sums', icon: '💵' },
+  { id: 'advanced', label: 'Advanced', icon: '🔒' },
 ];
 
 export default function AppNav({ activeView, onNavigate }) {

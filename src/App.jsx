@@ -7,6 +7,7 @@ import LumpSumOffsetPage from './pages/LumpSumOffsetPage';
 import PaymentFrequencyPage from './pages/PaymentFrequencyPage';
 import SubscriptionsPage from './pages/SubscriptionsPage';
 import WagesPage from './pages/WagesPage';
+import AdvancedPage from './pages/AdvancedPage';
 import {
   STATUS,
   initialSubscriptions,
@@ -62,6 +63,10 @@ const VIEW_META = {
   lumpsums: {
     title: 'Tax & Savings Deposits',
     subtitle: 'Lump sums into your offset account · AUD',
+  },
+  advanced: {
+    title: 'Advanced',
+    subtitle: 'See if you qualify · confidential strategy preview',
   },
 };
 
@@ -215,6 +220,13 @@ export default function App() {
             combinedMonthlySavings={combinedMonthlySavings}
             lumpSums={lumpSums}
             setLumpSums={setLumpSums}
+          />
+        )}
+        {view === 'advanced' && (
+          <AdvancedPage
+            loanBalance={loanBalance}
+            interestRate={interestRate}
+            loanTermYears={loanTermYears}
           />
         )}
       </div>
